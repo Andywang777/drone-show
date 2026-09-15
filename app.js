@@ -1,157 +1,98 @@
-import { readInk, sampleInk, decodeLineArt } from './lineart.mjs';
-import { setupMedia } from './media.js';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { COUNT, SPAN, CENTER_Y, readSurface, sampleTriangles, preset, launchGrid, interpolate } from './formation.mjs';
-
-const $ = id => document.getElementById(id);
-const ui = Object.fromEntries(['line-upload','line-file','line-name','line-mode','line-threshold','line-threshold-value','count','drone-total','light-color','red','green','blue','viewport','file','upload','formation','duration','reference','message','filename','play','restart','progress','time','phase','reset-view','fatal'].map(id=>[id,$(id)]));
-function message(text,error=false){ui.message.textContent=text;ui.message.classList.toggle('error',error);}
-function dispose(root){const geometries=new Set(),materials=new Set(),textures=new Set();root.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)for(const m of Array.isArray(o.material)?o.material:[o.material]){materials.add(m);for(const v of Object.values(m))if(v?.isTexture)textures.add(v);}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>{t.source?.data?.close?.();t.dispose();});}
-
-try {
-  const renderer = new THREE.WebGLRenderer({antialias:true,alpha:false});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-  renderer.setClearColor('#030910');
-  ui.viewport.prepend(renderer.domElement);
-  renderer.domElement.setAttribute('aria-label','1000 架无人机三维光点编队，可拖动旋转');
-  const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2('#030910',.009);
-  const camera = new THREE.PerspectiveCamera(43,1,.1,300);
-  const controls = new OrbitControls(camera,renderer.domElement);
-  controls.enableDamping=true;controls.minDistance=15;controls.maxDistance=110;controls.maxPolarAngle=Math.PI*.49;
-  function resetView(){if(ui.formation.value==='lineart')camera.position.set(0,CENTER_Y,42);else camera.position.set(28,20,40);controls.target.set(0,15,0);controls.update();}
-  resetView();
-  ui['reset-view'].onclick=resetView;
-  const grid=new THREE.GridHelper(160,80,'#243d55','#193047');grid.material.transparent=true;grid.material.opacity=.65;scene.add(grid);
-  let count=COUNT,positions=new Float32Array(count*3);
-  const geometry=new THREE.BufferGeometry();
-  geometry.setAttribute('position',new THREE.BufferAttribute(positions,3).setUsage(THREE.DynamicDrawUsage));
-  const textureCanvas=document.createElement('canvas');textureCanvas.width=64;textureCanvas.height=64;const ctx=textureCanvas.getContext('2d');const gradient=ctx.createRadialGradient(32,32,0,32,32,32);gradient.addColorStop(0,'rgba(255,255,255,1)');gradient.addColorStop(.12,'rgba(255,255,255,1)');gradient.addColorStop(.3,'rgba(255,255,255,.55)');gradient.addColorStop(1,'rgba(255,255,255,0)');ctx.fillStyle=gradient;ctx.fillRect(0,0,64,64);
-  const texture=new THREE.CanvasTexture(textureCanvas);
-  const material=new THREE.PointsMaterial({size:.8,fog:false,toneMapped:false,map:texture,color:ui['light-color'].value,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending});
-  const points=new THREE.Points(geometry,material);points.frustumCulled=false;scene.add(points);
-  let target=preset(),from=launchGrid(),progress=1,playing=false,duration=12,reference=null,modelTarget=null,modelName='',modelSurface=null,lineImage=null,lineInk=null,lineName='',pendingLineName='',busy=false;
-  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  function sync(){
-    ui.progress.value=Math.round(progress*1000);ui.time.value=`${(progress*duration).toFixed(1)} / ${duration} s`;
-    ui.play.querySelector('span').textContent=playing?'暂停':'播放';
-    ui.play.querySelector('path').setAttribute('d',playing?'M7 5h3v14H7ZM14 5h3v14h-3Z':'m8 5 11 7-11 7Z');
-    ui.phase.textContent=playing?'飞行成形中':progress===1?'编队就绪':progress===0?'等待起飞':'已暂停';
-  }
-  function drawFormation(){interpolate(from,target,progress,positions);geometry.attributes.position.needsUpdate=true;sync();}
-  function setTarget(next,autoplay=true){target=next;from=launchGrid(count);progress=reduced?1:0;playing=autoplay&&!reduced;drawFormation();}
-  ui.play.onclick=()=>{if(progress>=1)progress=0;playing=!playing;drawFormation();};
-  ui.restart.onclick=()=>{from=launchGrid(count);progress=0;playing=false;drawFormation();};
-  ui.progress.oninput=()=>{playing=false;progress=Number(ui.progress.value)/1000;drawFormation();};
-  ui.duration.onchange=()=>{duration=Math.min(60,Math.max(3,Math.round(Number(ui.duration.value)||12)));ui.duration.value=duration;sync();};
-  ui.reference.onchange=()=>{if(reference)reference.visible=ui.reference.checked&&ui.formation.value==='model';};
-  ui.formation.onchange=()=>{
-    const isModel=ui.formation.value==='model';
-    if(ui.formation.value==='lineart'&&lineInk){setTarget(sampleInk(lineInk,count));ui.reference.disabled=true;if(reference)reference.visible=false;resetView();message(`${lineName} · 已生成 ${count.toLocaleString()} 个线稿光点`);return;}
-    // 尚未上传模型时没有可用的点阵目标，回退到球形编队，避免后续绘制拿到空目标而静默失效。
-    if(isModel&&!modelTarget){ui.formation.value='sphere';ui.reference.disabled=true;if(reference)reference.visible=false;setTarget(preset('sphere',count));message('请先上传 GLB 模型，再选择模型编队。',true);return;}
-    setTarget(isModel?modelTarget:preset(ui.formation.value,count));
-    ui.reference.disabled=!isModel;if(reference)reference.visible=isModel&&ui.reference.checked;
-    message(isModel?`${modelName} · 已生成 ${count.toLocaleString()} 个表面光点`:'示例编队已载入。可上传 GLB 生成模型点阵。');
-  };
-  function syncCount(){
-    ui['drone-total'].textContent=`${count.toLocaleString()} 架`;
-    renderer.domElement.setAttribute('aria-label',`${count} 架无人机三维光点编队，可拖动旋转`);
-    document.title=`点阵飞行 · ${count.toLocaleString()} 架无人机`;
-  }
-  ui.count.onchange=()=>{
-    const requested=Number(ui.count.value);
-    if(!Number.isInteger(requested)||requested<1||requested>10000){ui.count.value=count;message('请输入 1–10,000 之间的整数架数。',true);return;}
-    if(requested===count)return;
-    const nextModel=modelSurface?sampleTriangles(modelSurface,requested):null;
-    const next=ui.formation.value==='model'?nextModel:ui.formation.value==='lineart'?sampleInk(lineInk,requested):preset(ui.formation.value,requested);
-    count=requested;modelTarget=nextModel;
-    // Release the old GPU buffers before replacing the position attribute.
-    geometry.dispose();positions=new Float32Array(count*3);
-    geometry.setAttribute('position',new THREE.BufferAttribute(positions,3).setUsage(THREE.DynamicDrawUsage));
-    syncCount();setTarget(next);
-    message(`${ui.formation.value==='model'?modelName:ui.formation.value==='lineart'?lineName:'示例编队'} · 已生成 ${count.toLocaleString()} 个光点`);
-  };
-  const channels=['red','green','blue'];
-  ui['light-color'].oninput=()=>{
-    const hex=ui['light-color'].value;
-    channels.forEach((id,i)=>ui[id].value=parseInt(hex.slice(1+i*2,3+i*2),16));
-    material.color.set(hex);
-  };
-  channels.forEach(id=>ui[id].oninput=()=>{
-    if(channels.some(key=>ui[key].value===''||!Number.isInteger(Number(ui[key].value))||Number(ui[key].value)<0||Number(ui[key].value)>255))return;
-    const hex='#'+channels.map(key=>Number(ui[key].value).toString(16).padStart(2,'0')).join('');
-    ui['light-color'].value=hex;material.color.set(hex);
-  });
-  channels.forEach((id,i)=>ui[id].onchange=()=>{
-    if(ui[id].value===''||!Number.isInteger(Number(ui[id].value))||Number(ui[id].value)<0||Number(ui[id].value)>255){
-      ui[id].value=parseInt(ui['light-color'].value.slice(1+i*2,3+i*2),16);message('RGB 分量请输入 0–255 之间的整数。',true);
-    }
-  });
-  syncCount();
-  function applyLine(image,name){
-    const ink=readInk(image,Number(ui['line-threshold'].value),ui['line-mode'].value);
-    const next=sampleInk(ink,count);
-    lineImage=image;lineInk=ink;lineName=name;
-    ui['line-name'].textContent=name;
-    ui.formation.querySelector('[value=lineart]').disabled=false;ui.formation.value='lineart';
-    ui.reference.disabled=true;if(reference)reference.visible=false;
-    setTarget(next);resetView();message(`${name} · 已生成 ${count.toLocaleString()} 个线稿光点`);
-  }
-  ui['line-upload'].onclick=()=>ui['line-file'].click();
-  ui['line-file'].onchange=async()=>{
-    const file=ui['line-file'].files[0];if(!file||busy||media.recording)return;
-    busy=true;
-    const locked=['line-upload','upload','count','formation','line-mode','line-threshold'];
-    locked.forEach(id=>ui[id].disabled=true);message('正在识别二维线稿…');
-    try{lineImage=await decodeLineArt(file);pendingLineName=file.name;applyLine(lineImage,pendingLineName); }
-    catch(error){message(`${error.message} 当前编队已保留。`,true);}
-    finally{busy=false;locked.forEach(id=>ui[id].disabled=false);ui['line-file'].value='';}
-  };
-  ui['line-threshold'].oninput=()=>{ui['line-threshold-value'].value=ui['line-threshold'].value;};
-  function updateLine(){if(!lineImage||busy||media.recording)return;try{applyLine(lineImage,pendingLineName||lineName);}catch(error){message(`${error.message} 当前编队已保留。`,true);}}
-  ui['line-threshold'].onchange=updateLine;ui['line-mode'].onchange=updateLine;
-  const manager=new THREE.LoadingManager();
-  // GLB must be self-contained. Prevent unexpected remote resources from a model.
-  manager.setURLModifier(url=>{if(url.startsWith('blob:')||url.startsWith('data:'))return url;const resolved=new URL(url,location.href);const decoderBase=new URL('./vendor/examples/jsm/libs/draco/gltf/',location.href);if(resolved.href.startsWith(decoderBase.href))return resolved.href;throw new Error('请使用包含全部资源的 GLB，当前文件引用了外部资源。');});
-  const draco=new DRACOLoader(manager).setDecoderPath(new URL('./vendor/examples/jsm/libs/draco/gltf/',location.href).href);
-  const loader=new GLTFLoader(manager).setDRACOLoader(draco).setMeshoptDecoder(MeshoptDecoder);
-  async function importFile(file){
-    if(!file||busy||media.recording)return;
-    if(!/\.glb$/i.test(file.name)){message('请选择 .glb 格式的三维模型。',true);return;}
-    if(file.size>100*1024*1024){message('文件超过 100 MB，请先简化模型。',true);return;}
-    busy=true;ui.upload.disabled=true;ui.formation.disabled=true;ui.count.disabled=true;message(`正在解析模型并生成 ${count.toLocaleString()} 个光点…`);
-    let loaded=null,newReference=null;
-    try {
-      const buffer=await file.arrayBuffer();
-      if(buffer.byteLength<20||new DataView(buffer).getUint32(0,true)!==0x46546c67)throw new Error('文件不是有效的 GLB 模型。');
-      loaded=await loader.parseAsync(buffer,'');
-      const surface=readSurface(loaded.scene),next=sampleTriangles(surface,count);
-      // Reference uses baked triangles, keeping it aligned even for skins and instances.
-      const g=new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute(surface.triangles,3));
-      const center=surface.box.getCenter(new THREE.Vector3()),size=surface.box.getSize(new THREE.Vector3()),scale=SPAN/Math.max(size.x,size.y,size.z);
-      g.translate(-center.x,-center.y,-center.z);g.scale(scale,scale,scale);g.translate(0,CENTER_Y,0);
-      newReference=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:'#4fa8c2',wireframe:true,transparent:true,opacity:.12,depthWrite:false}));newReference.visible=ui.reference.checked;
-      scene.add(newReference);
-      if(reference){scene.remove(reference);dispose(reference);}reference=newReference;modelTarget=next;modelSurface=surface;modelName=file.name;
-      ui.filename.hidden=false;ui.filename.textContent=file.name;ui.formation.querySelector('[value=model]').disabled=false;ui.formation.value='model';ui.reference.disabled=false;
-      setTarget(next);resetView();message(`${file.name} · 已生成 ${count.toLocaleString()} 个表面光点`);
-    }catch(error){
-      if(newReference&&newReference!==reference){scene.remove(newReference);dispose(newReference);}
-      console.warn('GLB import:',error);
-      const detail=/[\u4e00-\u9fff]/.test(error.message)?error.message:'解析失败。请使用资源内嵌的 GLB；支持 Draco / Meshopt，暂不支持 KTX2 纹理。';message(`${detail} 当前编队已保留。`,true);
-    }finally{if(loaded)for(const s of new Set(loaded.scenes||[loaded.scene]))dispose(s);busy=false;ui.upload.disabled=false;ui.formation.disabled=false;ui.count.disabled=false;ui.file.value='';}
-  }
-  ui.upload.onclick=()=>ui.file.click();ui.file.onchange=()=>importFile(ui.file.files[0]);
-  ui.viewport.addEventListener('dragover',e=>e.preventDefault());ui.viewport.addEventListener('drop',e=>{e.preventDefault();importFile(e.dataTransfer.files[0]);});
-  const media=setupMedia({renderer,scene,grid,message,isBusy:()=>busy,startFlight(){from=launchGrid(count);progress=0;playing=true;drawFormation();}});
-  media.setRender(()=>renderer.render(scene,camera));
-  new ResizeObserver(()=>{const {width,height}=ui.viewport.getBoundingClientRect();renderer.setSize(width,height);camera.aspect=width/height;camera.updateProjectionMatrix();media.resize();}).observe(ui.viewport);
-  renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();media.stop('三维渲染连接中断，视频录制已取消。');playing=false;sync();ui.fatal.hidden=false;ui.fatal.textContent='三维渲染连接已中断，请刷新页面重新开启。';});
-  drawFormation();let last=performance.now();
-  renderer.setAnimationLoop(now=>{const dt=Math.min((now-last)/1000,.1);last=now;if(playing&&!document.hidden){progress=Math.min(1,progress+dt/duration);if(progress===1)playing=false;drawFormation();}controls.update();renderer.render(scene,camera);media.frame(progress,duration);});
-}catch(error){ui.fatal.hidden=false;ui.fatal.textContent='无法启动三维场景，请使用支持 WebGL 2 的浏览器并开启硬件加速。';ui.play.disabled=true;ui.restart.disabled=true;ui.upload.disabled=true;console.error(error);}
+import {COUNT} from './formation.mjs';
+import {id,createProject,createFormation,ProjectStore} from './project/model.mjs';
+import {serializeProject,parseProject,autosave,readAutosave,downloadFile} from './project/persistence.mjs';
+import {generate} from './assets/generate.mjs';
+import {importRaster,createModelImporter} from './assets/import.mjs';
+import {createViewport} from './viewport/view.js';
+import {setupMedia} from './media.js';
+const $=id=>document.getElementById(id);
+const message=(text,error=false)=>{$('message').textContent=text;$('message').classList.toggle('error',error);};
+const names={sphere:'球形编队',helix:'螺旋编队',cube:'立方体编队'};
+function initial(){const p=createProject(),f=createFormation('球形编队',generate({kind:'preset',preset:'sphere'},COUNT),{kind:'preset',preset:'sphere'});p.formations.push(f);p.activeId=f.id;return p;}
+try{
+ const store=new ProjectStore(initial());let busy=false,recording=false,progress=1,playing=false,last=performance.now(),saveTimer,savedState=null,autosaveReady=false,hasAutosave=false,lastFormation=null,pendingRaster=null,view,media;
+ const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const active=()=>store.state.formations.find(f=>f.id===store.state.activeId);
+ const source=f=>store.state.assets.find(a=>a.id===f?.sourceAssetId);
+ function syncPlayback(){const duration=active()?.duration||12;$('progress').value=Math.round(progress*1000);$('time').value=`${(duration*progress).toFixed(1)} / ${duration} s`;$('play').querySelector('span').textContent=playing?'暂停':'播放';$('play').querySelector('path').setAttribute('d',playing?'M7 5h3v14H7ZM14 5h3v14h-3Z':'m8 5 11 7-11 7Z');$('phase').textContent=playing?'飞行成形中':progress===1?'编队就绪':progress===0?'等待起飞':'已暂停';}
+ function lock(){
+  for(const element of document.querySelectorAll('[data-edit]'))element.disabled=busy||recording;
+  const f=active();for(const key of ['count','formation-name','duration','light-color','red','green','blue','position-x','position-y','position-z','duplicate-formation','delete-formation','play','restart','progress'])$(key).disabled=busy||recording||!f;
+  $('undo').disabled=busy||recording||!store.undoStack.length;$('redo').disabled=busy||recording||!store.redoStack.length;
+  $('reference').disabled=busy||recording||source(f)?.type!=='mesh';
+  $('line-mode').disabled=$('line-threshold').disabled=busy||recording;
+  $('background-remove').disabled=busy||recording||!store.state.backgroundAssetId;
+  $('retry-line').disabled=$('discard-line').disabled=busy||recording||!pendingRaster;
+  $('record-video').disabled=busy||(!recording&&!f)||!videoSupported();
+  $('restore-project').disabled=busy||recording||!hasAutosave;
+ }
+ const videoSupported=()=>typeof MediaRecorder!=='undefined'&&typeof view?.renderer.domElement.captureStream==='function'&&['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'].some(t=>MediaRecorder.isTypeSupported(t));
+ view=createViewport($('viewport'),()=>{playing=false;media?.stop('三维渲染中断，录制已取消。');syncPlayback();$('fatal').hidden=false;$('fatal').textContent='三维渲染连接中断，请刷新恢复工程。';});
+ const modelImporter=createModelImporter();
+ function checkRuntime(project){const bg=project.assets.find(a=>a.id===project.backgroundAssetId);if(bg&&Math.max(bg.raster.width,bg.raster.height)>view.renderer.capabilities.maxTextureSize)throw new Error('工程背景尺寸超过本机支持上限。');return project;}
+ function sync(project,label){
+  const f=active();$('project-name').value=project.name;$('save-state').textContent=project===savedState?'工程已保存':'有未保存更改';
+  const list=$('formation-list');list.replaceChildren();for(const item of project.formations){const option=document.createElement('option');option.value=item.id;option.textContent=`${item.name} · ${item.points.ids.length} 点`;list.append(option);}list.value=project.activeId||'';
+  $('formation-name').value=f?.name||'';$('count').value=f?.points.ids.length||COUNT;$('duration').value=f?.duration||12;
+  $('drone-total').textContent=`${f?.points.ids.length||0} 架 · ${project.formations.length} 个编队`;
+  document.title=`${project.name} · 点阵飞行`;
+  $('filename').hidden=!f?.sourceAssetId;$('filename').textContent=source(f)?.name||'';
+  $('line-name').textContent=source(f)?.type==='raster'?source(f).name:'导入线稿将新建独立编队';
+  if(f?.generation.kind==='lineart'){$('line-mode').value=f.generation.mode;$('line-threshold').value=f.generation.threshold;}
+  $('line-threshold-value').value=$('line-threshold').value;
+  ['x','y','z'].forEach((key,i)=>$('position-'+key).value=f?.transform.position[i]??0);
+  setColorFields(f?.color||'#00ccff');
+  view.setFormation(f,source(f));view.reference($('reference').checked&&source(f)?.type==='mesh');
+  const background=project.assets.find(a=>a.id===project.backgroundAssetId);view.background(background);$('background-name').textContent=background?.name||'未设置背景';
+  if(lastFormation?.points!==f?.points||lastFormation?.transform!==f?.transform||lastFormation?.id!==f?.id){playing=false;progress=1;}
+  lastFormation=f;
+  if(label==='添加编队'&&!reduced){playing=true;progress=0;}
+  view.draw(progress);syncPlayback();lock();
+  if(label?.startsWith('撤销')||label?.startsWith('重做'))message(`${label}；当前编队 ${f?.points.ids.length||0} 点。`);
+  if(autosaveReady){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{const snapshot=store.state;autosave(snapshot).then(()=>{hasAutosave=true;$('autosave-status').textContent='本机自动保存已更新';$('restore-project').disabled=busy||recording;},()=>{$('autosave-status').textContent='自动保存失败，请手动保存工程';});},600);}
+ }
+ function setColorFields(hex){$('light-color').value=hex;['red','green','blue'].forEach((key,i)=>$(key).value=parseInt(hex.slice(1+i*2,3+i*2),16));}
+ store.subscribe(sync);
+ media=setupMedia({renderer:view.renderer,message,isBusy:()=>busy,startFlight(){progress=0;playing=true;view.draw(0);syncPlayback();},onRecordingChange(value){recording=value;lock();}});
+ media.setRender(()=>view.render());
+ sync(store.state);
+ readAutosave().then(p=>{autosaveReady=true;hasAutosave=!!p;$('restore-project').disabled=!p;$('autosave-status').textContent=p?'发现本机自动保存，可点击恢复':'编辑后自动保存到本机';},()=>{autosaveReady=true;$('autosave-status').textContent='自动保存读取失败，请手动打开工程；后续编辑会重建自动保存';});
+ async function task(action){if(busy||recording)return;busy=true;lock();const version=store.version;try{const commit=await action();if(version!==store.version)throw new Error('项目已改变，本次结果未应用。');commit?.();}catch(e){message(`${e.message} 当前工程已保留。`,true);}finally{busy=false;lock();}}
+ function update(patch,label){if(!active()||busy||recording)return;try{store.update(active().id,patch,label);}catch(e){message(e.message,true);sync(store.state);}}
+ function regenerate(generation,count=active().points.ids.length){const f=active(),positions=generate(generation,count,source(f));update({generation,points:{positions,ids:Array.from({length:count},id)}},'重新生成点阵');message(`已重新生成 ${count.toLocaleString()} 个光点；其他编队保持不变。`);}
+ $('formation-list').onchange=()=>store.select($('formation-list').value);
+ $('formation-name').onchange=()=>update({name:$('formation-name').value.trim()||'未命名编队'},'重命名编队');
+ $('project-name').onchange=()=>store.commit('重命名项目',p=>({...p,name:$('project-name').value.trim()||'未命名项目'}));
+ $('add-preset').onclick=()=>{const kind=$('formation').value,generation={kind:'preset',preset:kind};store.add(createFormation(names[kind],generate(generation,active()?.points.ids.length||COUNT),generation));};
+ $('count').onchange=()=>{try{regenerate(active().generation,Number($('count').value));}catch(e){message(e.message,true);$('count').value=active().points.ids.length;}};
+ $('duplicate-formation').onclick=()=>{const f=active();store.add({...f,id:id(),revision:0,name:f.name+' 副本',points:{positions:new Float32Array(f.points.positions),ids:Array.from({length:f.points.ids.length},id)}});};
+ $('delete-formation').onclick=()=>store.commit('删除编队',p=>{const formations=p.formations.filter(f=>f.id!==p.activeId);const used=new Set(formations.map(f=>f.sourceAssetId));used.add(p.backgroundAssetId);return {...p,formations,activeId:formations[0]?.id||null,assets:p.assets.filter(a=>used.has(a.id))};});
+ $('undo').onclick=()=>store.undo();$('redo').onclick=()=>store.redo();
+ document.addEventListener('keydown',e=>{if(busy||recording||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?store.redo():store.undo();}});
+ $('duration').onchange=()=>update({duration:Math.min(60,Math.max(3,Math.round(Number($('duration').value)||12)))},'修改时长');
+ for(const key of ['x','y','z'])$('position-'+key).onchange=()=>{const values=['x','y','z'].map(k=>Number($('position-'+k).value));if(values.some(n=>!Number.isFinite(n))){message('位置必须是有限数字。',true);sync(store.state);return;}update({transform:{position:values}},'移动编队');};
+ $('light-color').oninput=()=>{setColorFields($('light-color').value);view.color($('light-color').value);};
+ $('light-color').onchange=()=>update({color:$('light-color').value},'修改颜色');
+ for(const key of ['red','green','blue']){
+  $(key).oninput=()=>{const values=['red','green','blue'].map(k=>Number($(k).value));if(values.some(n=>!Number.isInteger(n)||n<0||n>255))return;const hex='#'+values.map(n=>n.toString(16).padStart(2,'0')).join('');$('light-color').value=hex;view.color(hex);};
+  $(key).onchange=()=>{const valid=['red','green','blue'].every(k=>$(k).value!==''&&Number.isInteger(Number($(k).value))&&Number($(k).value)>=0&&Number($(k).value)<=255);if(valid)update({color:$('light-color').value},'修改颜色');else{setColorFields(active().color);view.color(active().color);message('RGB 分量请输入 0–255 的整数。',true);}};
+ }
+ const lineSettings=()=>({kind:'lineart',mode:$('line-mode').value,threshold:Number($('line-threshold').value)});
+ $('line-threshold').oninput=()=>$('line-threshold-value').value=$('line-threshold').value;
+ for(const key of ['line-mode','line-threshold'])$(key).onchange=()=>{if(pendingRaster)return;if(active()?.generation.kind!=='lineart')return;try{regenerate(lineSettings());}catch(e){message(e.message,true);}};
+ async function addFile(file,kind){if(!file)return;await task(async()=>{message('正在读取素材并生成点阵…');const asset=kind==='mesh'?await modelImporter(file):await importRaster(file);if(kind!=='mesh'){pendingRaster=asset;$('line-draft').hidden=false;$('line-draft-name').textContent=file.name;}const generation=kind==='mesh'?{kind:'mesh'}:lineSettings(),positions=generate(generation,active()?.points.ids.length||COUNT,asset),f=createFormation(file.name,positions,generation,asset.id);return ()=>{if(kind!=='mesh'){pendingRaster=null;$('line-draft').hidden=true;}store.add(f,asset);message(`${file.name} 已保存为独立编队。`);};});}
+ $('retry-line').onclick=()=>task(async()=>{const asset=pendingRaster,generation=lineSettings(),positions=generate(generation,active()?.points.ids.length||COUNT,asset),f=createFormation(asset.name,positions,generation,asset.id);return ()=>{pendingRaster=null;$('line-draft').hidden=true;store.add(f,asset);message('线稿已重新识别并新建编队。');};});
+ $('discard-line').onclick=()=>{pendingRaster=null;$('line-draft').hidden=true;lock();};
+ $('upload').onclick=()=>$('file').click();$('file').onchange=async()=>{await addFile($('file').files[0],'mesh');$('file').value='';};
+ $('line-upload').onclick=()=>$('line-file').click();$('line-file').onchange=async()=>{await addFile($('line-file').files[0],'lineart');$('line-file').value='';};
+ $('viewport').ondragover=e=>e.preventDefault();$('viewport').ondrop=e=>{e.preventDefault();const file=e.dataTransfer.files[0];if(file)addFile(file,/\.glb$/i.test(file.name)?'mesh':'lineart');};
+ $('reference').onchange=()=>view.reference($('reference').checked);$('reset-view').onclick=()=>view.reset();
+ $('play').onclick=()=>{if(progress>=1)progress=0;playing=!playing;view.draw(progress);syncPlayback();};$('restart').onclick=()=>{progress=0;playing=false;view.draw(0);syncPlayback();};$('progress').oninput=()=>{progress=Number($('progress').value)/1000;playing=false;view.draw(progress);syncPlayback();};
+ $('background-upload').onclick=()=>$('background-file').click();$('background-file').onchange=async()=>{const file=$('background-file').files[0];if(file)await task(async()=>{const asset=await importRaster(file,'background');if(Math.max(asset.raster.width,asset.raster.height)>view.renderer.capabilities.maxTextureSize)throw new Error('背景超出本机纹理尺寸限制。');return ()=>store.commit('设置背景',p=>({...p,assets:[...p.assets.filter(a=>a.id!==p.backgroundAssetId),asset],backgroundAssetId:asset.id}));});$('background-file').value='';};
+ $('background-remove').onclick=()=>store.commit('移除背景',p=>({...p,assets:p.assets.filter(a=>a.id!==p.backgroundAssetId),backgroundAssetId:null}));
+ $('new-project').onclick=()=>store.replace(initial());
+ $('save-project').onclick=()=>task(async()=>{const snapshot=store.state,text=serializeProject(snapshot);downloadFile(new Blob([text],{type:'application/json'}),(snapshot.name.replace(/[\\/:*?"<>|]/g,'_')||'点阵工程')+'.droneshow.json');return ()=>{savedState=snapshot;$('save-state').textContent='工程已生成，已请求下载';message('工程包含所有编队、点集、源文件与背景，可重新打开继续编辑。');};});
+ $('open-project').onclick=()=>$('project-file').click();$('project-file').onchange=async()=>{const file=$('project-file').files[0];if(file)await task(async()=>{if(file.size>512*1024*1024)throw new Error('工程文件超过 512 MB。');const project=checkRuntime(parseProject(await file.text()));return ()=>{store.replace(project);savedState=store.state;$('save-state').textContent='工程已打开';message('工程已打开；可撤销返回之前的项目。');};});$('project-file').value='';};
+ $('restore-project').onclick=()=>task(async()=>{const project=await readAutosave();if(!project)throw new Error('没有可恢复的自动保存');checkRuntime(project);return ()=>{store.replace(project);message('已恢复本机自动保存。');};});
+ view.renderer.setAnimationLoop(now=>{const dt=Math.min((now-last)/1000,.1);last=now;if(playing&&!document.hidden){progress=Math.min(1,progress+dt/(active()?.duration||12));if(progress===1)playing=false;view.draw(progress);syncPlayback();}view.render();media.frame(progress,active()?.duration||12);});
+}catch(error){$('fatal').hidden=false;$('fatal').textContent='场景启动失败，请刷新页面或检查浏览器 WebGL 支持。';console.error(error);}

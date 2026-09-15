@@ -24,14 +24,14 @@ export function sampleInk(ink,count){
   }
   return out;
 }
-export async function decodeLineArt(file){
+export async function decodeLineArt(file,maxSide=1024){
   if(!/\.(png|jpe?g|webp)$/i.test(file.name)||file.size>20*1024*1024)throw new Error('请选择 20 MB 以内的 PNG、JPG 或 WebP 线稿。');
   const url=URL.createObjectURL(file);
   try{
     const image=new Image();image.src=url;
     try{await image.decode();}catch{throw new Error('无法读取线稿图片，请检查文件是否有效。');}
     if(image.width*image.height>40000000)throw new Error('图片尺寸过大，请缩小到 4,000 万像素以内。');
-    const scale=Math.min(1,1024/Math.max(image.width,image.height));
+    const scale=Math.min(1,maxSide/Math.max(image.width,image.height));
     const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));
     const context=canvas.getContext('2d',{willReadFrequently:true});context.drawImage(image,0,0,canvas.width,canvas.height);
     return context.getImageData(0,0,canvas.width,canvas.height);
