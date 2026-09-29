@@ -90,7 +90,7 @@
     var p1=el('p');
     p1.textContent=reason==='file'
       ?'当前是 file:// 地址。浏览器在这种方式下会拦截 JavaScript 模块和后台线程，所以按钮点了不会有任何反应——不是程序坏了，换个打开方式即可：'
-      :'三维场景未能初始化。请先刷新页面；若仍无反应，请确认网络能访问本页资源（vendor 目录）。';
+      :'场景还在加载（首次打开需要下载约 800KB 脚本，网络较慢时会久一点）。如已等待很久仍无画面，刷新一次即可；仍不行请确认能访问本站的 vendor 目录。';
     var p2=el('p','boot-help-steps');
     var s1=document.createElement('span');s1.textContent='在线版：';
     var a=document.createElement('a');a.href=ONLINE;a.textContent=ONLINE;a.target='_blank';a.rel='noreferrer';
@@ -117,14 +117,28 @@
     window.addEventListener('DOMContentLoaded',function(){showHelp('file');});
     setTimeout(function(){showHelp('file');},0);
   }
-  /* 兜底：仅在 http(s) 下，若 3 秒后场景仍未初始化且没有其他错误提示，给出可操作指引 */
-  window.addEventListener('load',function(){
-    setTimeout(function(){
-      if(isFile)return;
-      var fatal=document.getElementById('fatal');
-      if(!document.querySelector('#viewport canvas')&&!(fatal&&!fatal.hidden))showHelp('boot');
-    },3000);
-  });
+  /* 兜底：仅在 http(s) 下启用，且必须容忍慢网络。
+     首次加载 vendor 脚本可能耗时十几秒，早期版本固定 3 秒就报"启动失败"，
+     在慢网络下会误报。这里改为：持续观察 DOM，只有到截止时间仍无 canvas 才提示；
+     期间若场景完成初始化，则把已经弹出的提示撤掉。 */
+  function bootWatch(){
+    if(isFile)return;
+    var deadline=Date.now()+25000;
+    function scene(){return document.querySelector('#viewport canvas');}
+    function fatalShown(){var f=document.getElementById('fatal');return f&&!f.hidden;}
+    function clearHelp(){var box=document.getElementById('boot-help');if(box)box.remove();}
+    function check(){
+      if(scene()){clearHelp();return true;}
+      if(fatalShown())return true;
+      if(Date.now()>deadline){showHelp('boot');return true;}
+      return false;
+    }
+    if(check())return;
+    var timer=setInterval(function(){if(check())clearInterval(timer);},600);
+    if(window.MutationObserver)new MutationObserver(function(){check();}).observe(document.body,{childList:true,subtree:true});
+  }
+  window.addEventListener('load',bootWatch);
+  window.addEventListener('DOMContentLoaded',bootWatch);
 })();
 </script>
 <script type="module" src="./bootstrap.js"></script>
