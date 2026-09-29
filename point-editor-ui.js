@@ -1,0 +1,21 @@
+import {editPoint} from './project/point-edit.mjs';
+export function setupPointEditor({store,view,active,blocked,message,inspect}){
+ const motion=document.querySelector('.motion-section'),panel=document.createElement('section');panel.className='design-panel';motion.before(panel);
+ panel.innerHTML='<div class="editor-tabs" role="tablist" aria-label="设计步骤"><button id="point-edit-tab" role="tab" data-edit>点阵编辑</button><button id="motion-design-tab" role="tab" data-edit>动画设计</button></div><div id="point-edit-panel"><h2>整理二维点阵</h2><p class="hint">点击光点选中，拖动调整位置。滚轮缩放；方向键微调，Delete 删除，Esc 取消。</p><p id="point-selection-status" role="status">尚未选择光点</p><div class="point-coordinates"><label>X <input id="point-x" type="number" step="0.1" data-edit></label><label>Y <input id="point-y" type="number" step="0.1" data-edit></label></div><div class="media-actions"><button id="point-prev" data-edit>上一点</button><button id="point-next" data-edit>下一点</button></div><div class="media-actions"><button id="point-delete" data-edit>删除选中点</button><button id="point-undo" data-edit>撤销</button></div><p id="manual-point-note" class="hint"></p><button id="point-finish" class="primary" data-edit>完成整理 → 动画设计</button></div>';
+ panel.append(motion);const $=id=>panel.querySelector('#'+id);let tab='motion',selection=null,last=null;
+ function setTab(next){if(blocked())return;tab=next;inspect();if(next==='edit')view.reset();sync();}
+ function apply(operation){if(blocked()||tab!=='edit')return;try{const f=active(),patch=editPoint(f,selection,operation);if(patch)store.update(f.id,patch,operation.type==='delete'?'删除光点':'移动光点');}catch(e){message(e.message,true);inspect();}sync();}
+ function sync(){const f=active(),is2D=f?.spatialMode==='2D';if(last!==f?.id){last=f?.id;selection=null;tab=is2D?'edit':'motion';}if(!is2D)tab='motion';const index=f?.points.ids.indexOf(selection)??-1;if(index<0)selection=null;
+ $('point-edit-tab').disabled=blocked()||!is2D;$('motion-design-tab').disabled=blocked();$('point-edit-tab').setAttribute('aria-selected',String(tab==='edit'));$('motion-design-tab').setAttribute('aria-selected',String(tab==='motion'));$('point-edit-panel').hidden=tab!=='edit';motion.hidden=tab==='edit';
+ $('point-selection-status').textContent=index<0?'尚未选择光点':`已选第 ${index+1} 个光点 / ${f.points.ids.length}`;
+ for(const [key,k] of [['point-x',0],['point-y',1]]){$(key).disabled=blocked()||index<0;$(key).value=index<0?'':Number(f.points.positions[index*3+k].toFixed(3));}
+ $('point-delete').disabled=blocked()||index<0||f?.points.ids.length<=1;$('point-undo').disabled=blocked()||!store.undoStack.length;for(const key of ['point-prev','point-next','point-finish'])$(key).disabled=blocked()||!is2D;
+ $('manual-point-note').textContent=f?.manualEdited?'手动点阵已保留；自动疏密不会覆盖。重新布点将覆盖手动编辑，可撤销。':'先整理点阵，再设计动画。拖动保留原图颜色。';view.setPointEditing(tab==='edit'&&!blocked(),selection);
+ }
+ view.onPointSelection=id=>{selection=id;sync();};view.onPointMove=(id,x,y)=>{selection=id;apply({type:'move',x,y});};
+ $('point-edit-tab').onclick=()=>setTab('edit');$('motion-design-tab').onclick=$('point-finish').onclick=()=>setTab('motion');$('point-delete').onclick=()=>apply({type:'delete'});$('point-undo').onclick=()=>{if(!blocked())store.undo();};
+ for(const key of ['point-x','point-y'])$(key).onchange=()=>apply({type:'move',x:Number($('point-x').value),y:Number($('point-y').value)});
+ for(const [key,delta] of [['point-prev',-1],['point-next',1]])$(key).onclick=()=>{const f=active();if(!f||blocked())return;const old=f.points.ids.indexOf(selection),index=old<0?0:(old+delta+f.points.ids.length)%f.points.ids.length;selection=f.points.ids[index];sync();};
+ document.addEventListener('keydown',e=>{if(tab!=='edit'||blocked()||!selection||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();apply({type:'delete'});}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const f=active(),i=f.points.ids.indexOf(selection),step=e.shiftKey?1:.1;apply({type:'move',x:f.points.positions[i*3]+(e.key==='ArrowLeft'?-step:e.key==='ArrowRight'?step:0),y:f.points.positions[i*3+1]+(e.key==='ArrowDown'?-step:e.key==='ArrowUp'?step:0)});}});
+ return {sync,animate(){tab='motion';view.setPointEditing(false,null);sync();},get editing(){return tab==='edit';}};
+}

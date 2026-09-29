@@ -7,7 +7,7 @@
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/":"./vendor/examples/jsm/"}}</script>
 </head>
 <body>
-<header><h1>粒子空间 <small>设计预览 · v2026.09.20.4</small></h1><span><i></i><span id="drone-total">1,000 粒子</span></span></header>
+<header><h1>粒子空间 <small>设计预览 · v2026.09.20.2</small></h1><span><i></i><span id="drone-total">1,000 粒子</span></span></header>
 <main>
 <aside>
 <h2>素材与外观</h2>
@@ -73,54 +73,45 @@
 </section>
 </main>
 <script>
-/* 启动自检：本页依赖 ES 模块与模块化 Web Worker，必须在 http(s) 环境下运行。
-   直接双击（file://）打开时浏览器会拦截模块脚本与后台线程，页面看着正常但按钮全无反应。
-   这里用内联经典脚本（不受模块限制）给出明确指引，避免"点了没反应"的静默失败。
-   在线部署（GitHub Pages 等）与本地服务（npm start）都走 http(s)，不会触发提示，直接可用。 */
+/* 启动自检：本页依赖 ES 模块与本机服务，用 file:// 直接打开时浏览器会拦截模块脚本，
+   页面看起来正常但所有按钮都无反应，且模块内的错误提示也无法执行。
+   这里用内联经典脚本（不受模块限制）给出明确指引，避免"点了没反应"的静默失败。 */
 (function(){
-  var LOCAL='http://127.0.0.1:4180';
-  var ONLINE='https://andywang777.github.io/drone-show/';
-  function el(tag,cls){var n=document.createElement(tag);if(cls)n.className=cls;return n;}
-  function code(text){var c=document.createElement('code');c.textContent=text;return c;}
+  var URL_HINT='http://127.0.0.1:4180';
   function showHelp(reason){
     if(document.getElementById('boot-help'))return;
-    var box=el('div');box.id='boot-help';box.setAttribute('role','alert');
-    var title=el('strong');
-    title.textContent=reason==='file'?'请用网址打开，不要直接双击 index.html':'页面脚本没有正常启动';
-    var p1=el('p');
+    var box=document.createElement('div');box.id='boot-help';box.setAttribute('role','alert');
+    var title=document.createElement('strong');
+    title.textContent=reason==='file'?'需要通过本地服务打开，而不是双击文件':'页面脚本没有正常启动';
+    var p1=document.createElement('p');
     p1.textContent=reason==='file'
-      ?'当前是 file:// 地址。浏览器在这种方式下会拦截 JavaScript 模块和后台线程，所以按钮点了不会有任何反应——不是程序坏了，换个打开方式即可：'
-      :'三维场景未能初始化。请先刷新页面；若仍无反应，请确认网络能访问本页资源（vendor 目录）。';
-    var p2=el('p','boot-help-steps');
-    var s1=document.createElement('span');s1.textContent='在线版：';
-    var a=document.createElement('a');a.href=ONLINE;a.textContent=ONLINE;a.target='_blank';a.rel='noreferrer';
-    var s2=document.createElement('span');s2.textContent='　本机：项目目录执行 ';
-    var c1=code('npm start');
-    var s3=document.createElement('span');s3.textContent=' 或双击 ';
-    var c2=code('启动点阵飞行.command');
-    var s4=document.createElement('span');s4.textContent='，再访问 ';
-    var c3=code(LOCAL);
-    p2.append(s1,a,document.createElement('br'),s2,c1,s3,c2,s4,c3);
-    var open=el('button');open.type='button';open.textContent='打开在线版本';
-    open.onclick=function(){location.href=ONLINE;};
-    var copy=el('button');copy.type='button';copy.textContent='复制本机地址';
-    copy.onclick=function(){
-      var done=function(){copy.textContent='已复制';setTimeout(function(){copy.textContent='复制本机地址';},1600);};
-      if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(LOCAL).then(done,done);
+      ?'当前地址是 file://，浏览器会拦截 JavaScript 模块，所以按钮点了不会有任何反应。'
+      :'三维场景未能初始化，请确认本地服务正在运行后刷新页面。';
+    var p2=document.createElement('p');p2.className='boot-help-steps';
+    var s1=document.createElement('span');s1.textContent='① 在项目目录执行 ';
+    var c1=document.createElement('code');c1.textContent='npm start';
+    var s2=document.createElement('span');s2.textContent='，或双击 ';
+    var c2=document.createElement('code');c2.textContent='启动点阵飞行.command';
+    var s3=document.createElement('span');s3.textContent='；② 打开 ';
+    var c3=document.createElement('code');c3.textContent=URL_HINT;
+    p2.append(s1,c1,s2,c2,s3,c3);
+    var btn=document.createElement('button');btn.type='button';btn.textContent='复制地址';
+    btn.onclick=function(){
+      var done=function(){btn.textContent='已复制';setTimeout(function(){btn.textContent='复制地址';},1600);};
+      if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(URL_HINT).then(done,done);
       else done();
     };
-    box.append(title,p1,p2,open,copy);
+    box.append(title,p1,p2,btn);
     document.body.insertBefore(box,document.body.firstChild);
   }
   var isFile=location.protocol==='file:';
-  if(isFile){
-    window.addEventListener('DOMContentLoaded',function(){showHelp('file');});
-    setTimeout(function(){showHelp('file');},0);
-  }
-  /* 兜底：仅在 http(s) 下，若 3 秒后场景仍未初始化且没有其他错误提示，给出可操作指引 */
+  window.addEventListener('DOMContentLoaded',function(){
+    if(isFile)showHelp('file');
+  });
+  if(isFile)setTimeout(function(){showHelp('file');},0);
+  /* 兜底：无论什么原因，只要 3 秒后场景仍未初始化且没有其他错误提示，就给出可操作指引 */
   window.addEventListener('load',function(){
     setTimeout(function(){
-      if(isFile)return;
       var fatal=document.getElementById('fatal');
       if(!document.querySelector('#viewport canvas')&&!(fatal&&!fatal.hidden))showHelp('boot');
     },3000);

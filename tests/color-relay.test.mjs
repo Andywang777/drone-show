@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {sampleColors,colorRelayGroups,defaultMotion,validateMotion} from '../animation/motion.mjs';
+const source=new Float32Array([1,0,0,1,.002,0,0,1,0,0,0,1,1,1,1]);
+function frame(t,colors=source){const count=colors?colors.length/3:5,m=defaultMotion();m.enter.effect='skip';m.exit.effect='skip';m.hold={effect:'color-relay',duration:2};validateMotion(m);const out=new Float32Array(count*3);sampleColors(new Float32Array(count*3),m,t,[.4,.5,.6],new Float32Array(count).fill(.5),out,{min:[0,0,0],size:[1,1,1]},colors);return out;}
+test('similar colors group together; white stays separate and unused hues consume no time',()=>{const g=colorRelayGroups(source);assert.equal(g.count,4);assert.equal(g.groups[0],g.groups[1]);assert.notEqual(g.groups[3],g.groups[4]);assert.equal(colorRelayGroups(source),g);});
+test('relay preserves source hues and brightness, moves between groups, restores endpoints',()=>{for(const t of [0,1])assert.deepEqual(frame(t),Float32Array.from(source,v=>v*.5));const a=frame(.125),b=frame(.875);assert.ok(a[0]>a[14]);assert.ok(b[14]>b[0]);assert.equal(a[1],0);assert.equal(a[12],a[13]);assert.deepEqual(a,frame(.125));for(let i=0;i<a.length;i++)assert.ok(a[i]>=source[i]*.109&&a[i]<=source[i]*.501);});
+test('single color and missing original colors remain steady',()=>{assert.deepEqual(frame(.5,new Float32Array([1,0,0,1,0,0])),new Float32Array([.5,0,0,.5,0,0]));assert.deepEqual(frame(.2,null),frame(.8,null));});

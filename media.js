@@ -4,14 +4,14 @@ export function setupMedia({renderer,message,startFlight,isBusy,onRecordingChang
   let recording=null;
   function download(blob,extension){
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download=`点阵飞行-${new Date().toISOString().replace(/[:.]/g,'-')}.${extension}`;
+    a.href=url;a.download=`粒子空间-${new Date().toISOString().replace(/[:.]/g,'-')}.${extension}`;
     document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
   }
   let renderNow=()=>{};
   $('export-image').onclick=()=>{
     const type=$('image-format').value;
     try{
-      renderNow();
+      renderNow(true);
       renderer.domElement.toBlob(blob=>{
         if(!blob){message('图片导出失败，请重试。',true);return;}
         download(blob,type==='image/jpeg'?'jpg':'png');message('图片已生成，已请求浏览器下载。');
@@ -21,7 +21,7 @@ export function setupMedia({renderer,message,startFlight,isBusy,onRecordingChang
   const supported=typeof MediaRecorder!=='undefined'&&typeof renderer.domElement.captureStream==='function';
   const mime=supported?['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'].find(t=>MediaRecorder.isTypeSupported(t)):null;
   $('record-video').disabled=!mime;
-  $('video-hint').textContent=mime?`从起飞录制到成形 · ${mime.includes('mp4')?'MP4':'WebM'} · 无声视频`:'当前浏览器不支持视频录制，请使用支持 MediaRecorder 的浏览器。';
+  $('video-hint').textContent=mime?`录制完整三阶段动画 · ${mime.includes('mp4')?'MP4':'WebM'} · 无声视频`:'当前浏览器不支持视频录制，请使用支持 MediaRecorder 的浏览器。';
   function unlock(state){
     onRecordingChange(false);
     $('record-video').textContent='录制视频';$('record-video').disabled=!mime;
@@ -55,7 +55,7 @@ export function setupMedia({renderer,message,startFlight,isBusy,onRecordingChang
         if(!blob.size){message('未录制到画面，请重试。',true);return;}
         download(blob,recorder.mimeType.includes('mp4')?'mp4':'webm');message('视频已生成，已请求浏览器下载。');
       };
-      startFlight();renderNow();context.drawImage(renderer.domElement,0,0,canvas.width,canvas.height);
+      startFlight();renderNow(true);context.drawImage(renderer.domElement,0,0,canvas.width,canvas.height);
       recorder.start(1000);$('record-video').textContent='停止并保存';$('record-status').textContent='正在录制…';
     }catch(error){stream?.getTracks().forEach(track=>track.stop());if(recording)unlock(recording);recording=null;message('无法开始录制，请尝试其他浏览器。',true);}
   };
@@ -66,7 +66,7 @@ export function setupMedia({renderer,message,startFlight,isBusy,onRecordingChang
     stop,
     frame(progress,duration){
       if(!recording||recording.recorder.state!=='recording')return;
-      const {context,canvas}=recording;context.drawImage(renderer.domElement,0,0,canvas.width,canvas.height);
+      const {context,canvas}=recording;renderNow(true);context.drawImage(renderer.domElement,0,0,canvas.width,canvas.height);
       $('record-status').textContent=`正在录制 ${(progress*duration).toFixed(1)} / ${duration} s`;
       if(progress>=1&&!recording.ending){recording.ending=true;const state=recording;setTimeout(()=>{if(recording===state)stop();},150);}
     }

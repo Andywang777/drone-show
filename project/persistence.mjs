@@ -1,4 +1,8 @@
 import {validateProject} from './model.mjs';
+export function migrateProject(project){
+ for(const f of project?.formations||[])if(f?.motion?.exit?.effect==='flip')f.motion.exit.effect='fade';
+ return project;
+}
 const types={Float32Array,Float64Array,Uint8Array,Uint8ClampedArray};
 export function serializeProject(project){
  validateProject(project);
@@ -17,7 +21,7 @@ export function parseProject(text){
   const raw=atob(v.data),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
   if(bytes.byteLength%Type.BYTES_PER_ELEMENT)throw new Error('工程缓冲长度无效');
   return new Type(bytes.buffer);
- });return validateProject(project);
+ });return validateProject(migrateProject(project));
 }
 let database;
 async function db(){
@@ -27,5 +31,5 @@ async function db(){
 export async function autosave(project){
  const d=await db();return new Promise((resolve,reject)=>{const t=d.transaction('autosave','readwrite');t.objectStore('autosave').put(project,'latest');t.oncomplete=resolve;t.onerror=()=>reject(t.error);t.onabort=()=>reject(t.error);});
 }
-export async function readAutosave(){const d=await db();return new Promise((resolve,reject)=>{const r=d.transaction('autosave').objectStore('autosave').get('latest');r.onsuccess=()=>{try{resolve(r.result?validateProject(r.result):null);}catch(e){reject(e);}};r.onerror=()=>reject(r.error);});}
+export async function readAutosave(){const d=await db();return new Promise((resolve,reject)=>{const r=d.transaction('autosave').objectStore('autosave').get('latest');r.onsuccess=()=>{try{resolve(r.result?validateProject(migrateProject(r.result)):null);}catch(e){reject(e);}};r.onerror=()=>reject(r.error);});}
 export function downloadFile(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}

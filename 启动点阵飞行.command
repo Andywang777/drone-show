@@ -12,7 +12,7 @@ if [ ! -f server.mjs ]; then
   exit 1
 fi
 
-PORT=4178
+PORT=4180
 URL="http://127.0.0.1:$PORT"
 
 # 双击启动时继承的 PATH 很窄，这里补齐常见的 Node 安装位置

@@ -1,0 +1,8 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {strokePoints} from '../geometry/strokes.mjs';
+function raster(width=100,height=80){const data=new Uint8ClampedArray(width*height*4);for(let i=0;i<width*height;i++)data[i*4+3]=255;return {width,height,data};}
+function rect(r,x0,y0,x1,y1){for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)r.data.set([255,200,100,255],(y*r.width+x)*4);}
+const g={mode:'light',threshold:100,sizeM:22};
+function spacing(p){let min=Infinity;for(let i=0;i<p.positions.length/3;i++)for(let j=0;j<i;j++)min=Math.min(min,Math.hypot(p.positions[i*3]-p.positions[j*3],p.positions[i*3+1]-p.positions[j*3+1]));return min;}
+test('thick and thin parallel strokes receive comparable counts, not area-weighted density',()=>{const r=raster();rect(r,10,15,85,15);rect(r,10,45,85,53);const p=strokePoints(r,g,100);let thin=0,thick=0;for(let i=1;i<p.uv.length;i+=2){if(p.uv[i]*r.height<30)thin++;else thick++;}assert.ok(Math.abs(thin-thick)<15);assert.equal(thin+thick,100);assert.ok(spacing(p)>.01);});
+test('junction samples merge, exact budget redistributed and stroke order retained',()=>{const r=raster();rect(r,10,37,90,43);rect(r,47,10,53,70);const p=strokePoints(r,g,100);assert.equal(p.positions.length,300);assert.ok(spacing(p)>.02);assert.deepEqual(p,strokePoints(r,g,100));for(let i=1;i<p.strokeIds.length;i++)assert.ok(p.strokeIds[i]>=p.strokeIds[i-1]);});
+test('disconnected short thin feature is retained beside a thick stroke',()=>{const r=raster();rect(r,10,40,85,48);rect(r,45,10,48,10);const p=strokePoints(r,g,60);assert.ok(Array.from(p.uv).some((v,i)=>i%2===1&&v*r.height<20));assert.equal(p.positions.length,180);});

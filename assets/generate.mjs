@@ -2,8 +2,8 @@ import * as THREE from '../vendor/three.module.min.js';
 import {preset,sampleTriangles,CENTER_Y} from '../formation.mjs';
 import {readInk,sampleInk} from '../lineart.mjs';
 /** All adapters return local XYZ; placement belongs to Formation.transform. */
-export function generate(generation,count,asset){
- if(!Number.isInteger(count)||count<1||count>10000)throw new Error('请输入 1–10,000 之间的整数架数。');
+export function generate(generation,count,asset,{maxCount=10000}={}){
+ if(!Number.isInteger(count)||count<1||count>maxCount)throw new Error('请输入 1–10,000 之间的整数架数。');
  let positions;
  if(generation.kind==='preset')positions=preset(generation.preset,count);
  else if(generation.kind==='lineart')positions=sampleInk(readInk(asset.raster,generation.threshold,generation.mode),count);

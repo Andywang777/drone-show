@@ -1,5 +1,3 @@
-import {setupCompactUI} from './compact-ui.js';
-import {setupPointEditor} from './point-editor-ui.js';
 import {DOT_SIZES,densityStats} from './geometry/visual-density.mjs';
 import {setupStoryboard} from './storyboard-ui.js';
 import {detectLineSettings} from './geometry/strokes.mjs';
@@ -19,7 +17,7 @@ const message=(text,error=false)=>{$('message').textContent=text;$('message').cl
 const names={sphere:'球形素材',helix:'螺旋素材',cube:'立方体素材'};
 function initial(){const p=createProject(),f=createFormation('球形素材',generate({kind:'preset',preset:'sphere'},COUNT),{kind:'preset',preset:'sphere'});p.formations.push(f);p.activeId=f.id;return p;}
 try{
- const store=new ProjectStore(initial());let busy=false,recording=false,mode='inspect',progress=0,playing=false,last=performance.now(),saveTimer,savedState=null,autosaveReady=false,hasAutosave=false,lastFormation=null,pendingRaster=null,currentTask=null,view,media,storyboard,pointEditor;
+ const store=new ProjectStore(initial());let busy=false,recording=false,mode='inspect',progress=0,playing=false,last=performance.now(),saveTimer,savedState=null,autosaveReady=false,hasAutosave=false,lastFormation=null,pendingRaster=null,currentTask=null,view,media,storyboard;
  const jobs=new GeometryJobs();
  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
  const active=()=>store.state.formations.find(f=>f.id===store.state.activeId);
@@ -49,7 +47,7 @@ try{
   $('background-remove').disabled=busy||recording||!store.state.backgroundAssetId;
   $('retry-line').disabled=$('discard-line').disabled=busy||recording||!pendingRaster;
   $('record-video').disabled=busy||(!recording&&!f)||!videoSupported();
-  $('restore-project').disabled=busy||recording||!hasAutosave;pointEditor?.sync();
+  $('restore-project').disabled=busy||recording||!hasAutosave;
  }
  const videoSupported=()=>typeof MediaRecorder!=='undefined'&&typeof view?.renderer.domElement.captureStream==='function'&&['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'].some(t=>MediaRecorder.isTypeSupported(t));
  view=createViewport($('viewport'),()=>{playing=false;media?.stop('三维渲染中断，录制已取消。');syncPlayback();$('fatal').hidden=false;$('fatal').textContent='三维渲染连接中断，请刷新恢复工程。';});
@@ -60,7 +58,7 @@ try{
   const list=$('formation-list');list.replaceChildren();for(const item of project.formations){const option=document.createElement('option');option.value=item.id;option.textContent=`${item.name} · ${item.points.ids.length} 点`;list.append(option);}list.value=project.activeId||'';
   $('formation-name').value=f?.name||'';$('count').value=fullCount(f);const motion=motionFor(f);for(const key of STAGES){$(key+'-effect').value=motion[key].effect;$(key+'-duration').value=Number(motion[key].duration.toFixed(2));}$('growth-origin').value=motion.enter.origin||'default';$('growth-origin-field').hidden=motion.enter.effect!=='grow';for(const option of $('growth-origin').options)option.disabled=option.value!=='default'&&!f?.points.strokeIds;$('growth-origin-hint').textContent=f?.points.strokeIds?'沿笔画传播，断开的线条按邻近关系接力。':'此素材需点击更新图形与布点，才能选择起点。';$('enter-effect').querySelector('[value="stroke-relay"]').disabled=!f?.points.strokeIds;$('hold-palette').value=motion.hold.palette||'cool';$('palette-field').hidden=!isColorEffect(motion.hold.effect);$('total-duration').value=Number(totalDuration(motion).toFixed(3));$('audience-range').value=f?.audience?.range||'full';$('audience-depth').checked=!!f?.audience?.depth;$('motion-total').textContent=`总时长 ${Number(totalDuration(motion).toFixed(2))} 秒`;
   $('drone-total').textContent=`${f?.points.ids.length||0} 粒子 · ${project.formations.length} 份素材`;
-  document.title=`${project.name} · 粒子空间 · v2026.09.20.4`;
+  document.title=`${project.name} · 粒子空间 · v2026.09.20.2`;
   $('filename').hidden=!f?.sourceAssetId;$('filename').textContent=source(f)?.name||'';
   $('line-name').textContent=source(f)?.type==='raster'?source(f).name:'导入线稿将新建独立素材';
   if(f?.generation.kind==='lineart'){$('line-mode').value=f.generation.mode;$('line-threshold').value=f.generation.threshold;}
@@ -69,23 +67,21 @@ try{
   ['x','y','z'].forEach((key,i)=>$('position-'+key).value=f?.transform.position[i]??0);
   setColorFields(f?.color||'#00ccff');
   $('dot-size').value=project.visual?.dotSize||'medium';$('auto-density').checked=!!project.visual?.autoDensity;view.setVisual(project.formations,project.visual);
-  const density=f?densityStats(f.points.positions):null,dot=DOT_SIZES[project.visual?.dotSize||'medium'];$('density-status').textContent=density?`亮点 ${f.points.ids.length} / 上限 ${fullCount(f)} · 典型点间距 ${density.median.toFixed(2)} 米 · 光点显示 ${dot.toFixed(2)} 场景单位${density.min<dot?'；局部仍有重叠风险，可选小光点或更新布点':''}${f.manualEdited?'；手动编辑保留中':''}`:'导入素材后显示疏密';
+  const density=f?densityStats(f.points.positions):null,dot=DOT_SIZES[project.visual?.dotSize||'medium'];$('density-status').textContent=density?`亮点 ${f.points.ids.length} / 上限 ${fullCount(f)} · 典型点间距 ${density.median.toFixed(2)} 米 · 光点显示 ${dot.toFixed(2)} 场景单位${density.min<dot?'；局部仍有重叠风险，可选小光点或更新布点':''}`:'导入素材后显示疏密';
   view.setFormation(f,source(f));view.reference($('reference').checked&&source(f)?.type==='mesh');
   const background=project.assets.find(a=>a.id===project.backgroundAssetId);view.background(background);$('background-name').textContent=background?.name||'未设置背景';
   if(lastFormation?.points!==f?.points||lastFormation?.transform!==f?.transform||lastFormation?.id!==f?.id){mode='inspect';playing=false;progress=0;}
   if(lastFormation&&lastFormation.id===f?.id&&lastFormation.motion!==f?.motion){mode=reduced?'inspect':'animation';progress=0;playing=!!f&&!reduced;}
   lastFormation=f;
-  draw();syncPlayback();lock();storyboard?.sync();pointEditor?.sync();
+  draw();syncPlayback();lock();storyboard?.sync();
   if(label?.startsWith('撤销')||label?.startsWith('重做'))message(`${label}；当前素材 ${f?.points.ids.length||0} 点。`);
   if(autosaveReady){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{const snapshot=store.state;autosave(snapshot).then(()=>{hasAutosave=true;$('autosave-status').textContent='本机自动保存已更新';$('restore-project').disabled=busy||recording;},()=>{$('autosave-status').textContent='自动保存失败，请手动保存工程';});},600);}
  }
  function setColorFields(hex){$('light-color').value=hex;['red','green','blue'].forEach((key,i)=>$(key).value=parseInt(hex.slice(1+i*2,3+i*2),16));}
  store.subscribe(sync);
- media=setupMedia({renderer:view.renderer,message,isBusy:()=>busy,startFlight(){storyboard?.stop();pointEditor?.animate();mode='animation';progress=0;playing=true;last=performance.now();draw();syncPlayback();},onRecordingChange(value){recording=value;if(!value){mode='inspect';playing=false;progress=0;draw();syncPlayback();}lock();}});
+ media=setupMedia({renderer:view.renderer,message,isBusy:()=>busy,startFlight(){storyboard?.stop();mode='animation';progress=0;playing=true;last=performance.now();draw();syncPlayback();},onRecordingChange(value){recording=value;if(!value){mode='inspect';playing=false;progress=0;draw();syncPlayback();}lock();}});
  media.setRender(clean=>view.render(clean));
- pointEditor=setupPointEditor({store,view,active,blocked:()=>busy||recording||!!storyboard?.running,message,inspect(){storyboard?.stop();mode='inspect';playing=false;progress=0;draw();syncPlayback();}});
- storyboard=setupStoryboard({store,view,active,source,message,blocked:()=>busy||recording,pause(){pointEditor?.animate();playing=false;progress=0;},restore(){mode='inspect';playing=false;progress=0;view.setFormation(active(),source(active()));view.reference($('reference').checked);draw();syncPlayback();lock();}});
- setupCompactUI();
+ storyboard=setupStoryboard({store,view,active,source,message,blocked:()=>busy||recording,pause(){playing=false;progress=0;},restore(){mode='inspect';playing=false;progress=0;view.setFormation(active(),source(active()));view.reference($('reference').checked);draw();syncPlayback();lock();}});
  sync(store.state);
  readAutosave().then(p=>{autosaveReady=true;hasAutosave=!!p;$('restore-project').disabled=!p;$('autosave-status').textContent=p?'发现本机自动保存，可点击恢复':'编辑后自动保存到本机';},()=>{autosaveReady=true;$('autosave-status').textContent='自动保存读取失败，请手动打开工程；后续编辑会重建自动保存';});
  async function task(action){
@@ -108,9 +104,8 @@ try{
  function resultPoints(result){const ids=Array.from({length:result.positions.length/3},(_,i)=>result.lockedIds[i]||id());return {positions:result.positions,ids,lockedIds:result.lockedIds,...(result.uv?{uv:result.uv}:{}),...(result.strokeIds?{strokeIds:result.strokeIds}:{})};}
  function update(patch,label){if(!active()||busy||recording)return;try{store.update(active().id,patch,label);}catch(e){message(e.message,true);sync(store.state);}}
  async function regenerate(generation,count=Number($('count').value),audience=active()?.audience){
-  if(active()?.manualEdited&&!window.confirm('重新布点将覆盖手动移动和删除的点，可通过撤销恢复。继续吗？')){sync(store.state);return;}
   await task(async()=>{const f=active(),g={...requested(generation),...(generation.kind==='mesh'?{meshLayout:$('mesh-layout').value,viewDirection:(audience||defaultAudience()).position.map((v,i)=>v-(audience||defaultAudience()).target[i])}:{})},result=await calculate(g,count,source(f),undefined);
-   return ()=>{store.update(f.id,{manualEdited:false,generation:{...g,pointBudget:count},...audiencePatch(f,resultPoints(result),audience)},'重新生成点阵');message(`已更新布点：${active().points.ids.length.toLocaleString()} 个亮点，总数上限 ${count.toLocaleString()}。`);};});
+   return ()=>{store.update(f.id,{generation:{...g,pointBudget:count},...audiencePatch(f,resultPoints(result),audience)},'重新生成点阵');message(`已更新布点：${active().points.ids.length.toLocaleString()} 个亮点，总数上限 ${count.toLocaleString()}。`);};});
  }
  $('mesh-layout').onchange=()=>regenerate(active().generation);
  $('regenerate').onclick=()=>regenerate(active().generation);
@@ -161,7 +156,7 @@ try{
  $('line-upload').onclick=()=>$('line-file').click();$('line-file').onchange=async()=>{await addFile($('line-file').files[0],'lineart');$('line-file').value='';};
  $('viewport').ondragover=e=>e.preventDefault();$('viewport').ondrop=e=>{e.preventDefault();const file=e.dataTransfer.files[0];if(file)addFile(file,/\.glb$/i.test(file.name)?'mesh':'lineart');};
  $('reference').onchange=()=>view.reference($('reference').checked);$('reset-view').onclick=()=>view.reset();
- function startPreview(){storyboard?.stop();pointEditor?.animate();if(!active()||busy||recording)return;mode='animation';progress=0;playing=true;last=performance.now();draw();syncPlayback();}
+ function startPreview(){storyboard?.stop();if(!active()||busy||recording)return;mode='animation';progress=0;playing=true;last=performance.now();draw();syncPlayback();}
  $('inspect-mode').onclick=()=>{if(busy||recording)return;storyboard?.stop();mode='inspect';playing=false;progress=0;draw();syncPlayback();};
  $('animation-mode').onclick=startPreview;
  $('loop-preview').onchange=syncPlayback;

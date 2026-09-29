@@ -63,6 +63,7 @@ export function launchGrid(count = COUNT) {
   return out;
 }
 export function preset(kind = 'sphere', count = COUNT) {
+  if(kind==='sphere')return latitudeSphere(count);
   const out = new Float32Array(count*3), random = seededRandom();
   for (let i=0;i<count;i++) {
     let x,y,z;
@@ -83,4 +84,18 @@ export function interpolate(from, to, progress, out) {
     out[i+1]+=Math.sin(Math.PI*p)*3;
   }
   return out;
+}
+
+// Latitude rings share a common longitude lattice. Fewer slots are used near poles.
+export function latitudeSphere(count){
+ const out=new Float32Array(count*3);if(count===1){out.set([0,CENTER_Y+11,0]);return out;}
+ out.set([0,CENTER_Y+11,0]);out.set([0,CENTER_Y-11,0],(count-1)*3);if(count===2)return out;
+ const rings=Math.max(1,Math.min(count-2,Math.round(Math.sqrt(count/2)))),weights=Array.from({length:rings},(_,i)=>Math.sin(Math.PI*(i+1)/(rings+1))),sum=weights.reduce((a,b)=>a+b,0),remaining=count-2-rings;
+ const raw=weights.map(w=>remaining*w/sum),sizes=raw.map(v=>1+Math.floor(v));let extra=count-2-sizes.reduce((a,b)=>a+b,0);
+ const order=raw.map((v,i)=>i).sort((a,b)=>(raw[b]%1)-(raw[a]%1)||a-b);for(let i=0;i<extra;i++)sizes[order[i]]++;
+ const columns=Math.max(...sizes);let index=1;
+ for(let row=0;row<rings;row++){const theta=Math.PI*(row+1)/(rings+1),radius=11*Math.sin(theta),y=CENTER_Y+11*Math.cos(theta);
+  for(let j=0;j<sizes[row];j++){const slot=Math.floor(j*columns/sizes[row]),angle=2*Math.PI*slot/columns;out.set([radius*Math.cos(angle),y,radius*Math.sin(angle)],index++*3);}
+ }
+ return out;
 }

@@ -4,7 +4,33 @@
 
 ## 启动
 
-运行 `npm start`，浏览器打开 http://127.0.0.1:4178；macOS 可双击 `启动点阵飞行.command`。无需 npm install，依赖已放在 vendor。不要直接双击 index.html，file:// 会阻止模块加载。
+**在线版（推荐，打开即用，无需安装任何东西）**
+
+<https://andywang777.github.io/drone-show/>
+
+由 GitHub Pages 托管，纯静态、无后端。打开网页即可使用，所有数据都在你自己的浏览器里处理（模型、线稿、工程文件不会上传到服务器）。首次打开后也可以继续离线使用。
+
+**本机版（需要自己起一个静态服务）**
+
+本页依赖 ES 模块与模块化 Web Worker，浏览器禁止在 `file://` 下加载它们——**直接双击 `index.html` 会出现「按钮没反应」**。请任选一种方式：
+
+```bash
+npm start          # 然后访问 http://127.0.0.1:4180
+```
+
+macOS 也可以直接双击 `启动点阵飞行.command`，它会启动服务并自动打开浏览器。无需 `npm install`，依赖已放在 `vendor/`。
+
+> 用 `file://` 打开时页面顶部会自动给出提示与在线版入口，不会静默失败。
+
+## 部署到 GitHub Pages
+
+仓库根目录即为站点根目录，无需构建步骤：
+
+- `index.html` 是入口页，所有资源都使用相对路径，可直接部署在 `用户名.github.io/仓库名/` 这类子路径下。
+- `.nojekyll` 已加入，跳过 Jekyll 处理，避免下划线开头的文件被忽略。
+- 在仓库 Settings → Pages 中选择 `Deploy from a branch`，分支 `main`、目录 `/ (root)`，保存后等待一两分钟即可。
+
+> `.mjs` 模块文件由 GitHub Pages 以正确的 JavaScript MIME 类型提供；换成其他静态托管（Nginx/Apache 等）时需确认已为 `.mjs` 配置 `text/javascript`。
 
 ## 编队与素材
 

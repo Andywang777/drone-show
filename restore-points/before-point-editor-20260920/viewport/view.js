@@ -1,4 +1,3 @@
-import {attachPointEditor} from './point-editor.js';
 import {DOT_SIZES} from '../geometry/visual-density.mjs';
 import {sourceColors} from '../geometry/strokes.mjs';
 import {samplePreview} from '../animation/preview.mjs';
@@ -45,17 +44,14 @@ export function createViewport(container,onContextLost){
  function fit(){if(!background)return;const view=renderer.domElement.width/renderer.domElement.height,ratio=background.image.width/background.image.height;background.repeat.set(Math.min(1,view/ratio),Math.min(1,ratio/view));background.offset.set((1-background.repeat.x)/2,(1-background.repeat.y)/2);}
  const observer=new ResizeObserver(()=>{const {width,height}=container.getBoundingClientRect();if(!width||!height)return;renderer.setSize(width,height);camera.aspect=width/height;camera.updateProjectionMatrix();fit();});observer.observe(container);
  renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();onContextLost();});
- let api;
- const editor=attachPointEditor({canvas:renderer.domElement,container,camera,controls,getFormation:()=>current,getPositions:()=>positions,refresh:()=>{geometry.attributes.position.needsUpdate=true;},onSelect:id=>api.onPointSelection?.(id),onMove:(id,x,y)=>api.onPointMove?.(id,x,y)});
  reset();
- return api={
+ return {
   renderer,scene,grid,reset,
-  setPointEditing(active,id){editor.set(active,id);},
   setVisual(formations,visual){material.size=DOT_SIZES[visual?.dotSize||'medium'];sharedFrame=null;frameKey=null;},
   captureAudience(){const offset=current.transform.position;return {...(current.audience||defaultAudience()),position:camera.position.toArray().map((v,i)=>v-offset[i]),target:controls.target.toArray().map((v,i)=>v-offset[i])};},
   returnAudience(){if(!current)return;const a=current.audience||defaultAudience(),p=current.transform.position;controls.enableDamping=false;camera.position.set(...a.position.map((v,i)=>v+p[i]));controls.target.set(...a.target.map((v,i)=>v+p[i]));controls.update();controls.enableDamping=true;},
   setFormation(f,asset){
-   editor.cancel();if(transitionActive){current=null;transitionActive=false;}
+   if(transitionActive){current=null;transitionActive=false;}
    const switched=current?.id!==f?.id;
    if(current?.points===f?.points&&current?.transform===f?.transform&&source===asset){current=f;tint.set(f?.color||'#00ccff');syncAudience();return;}
    current=f;originalColors=f?.points.uv&&asset?.raster?sourceColors(asset.raster,f.points.uv,f.generation):null;
@@ -87,6 +83,6 @@ export function createViewport(container,onContextLost){
    background?.dispose();background=next;backgroundId=asset?.id;scene.background=next;grid.visible=false;fit();
   },
   draw(progress,mode='animation'){inspection=mode==='inspect';currentProgress=progress;if(!current)return;samplePreview(current,mode,progress,positions,brightness,bounds,depth);geometry.attributes.position.needsUpdate=true;},
-  render(clean=false){editor.render(clean);if(!transitionActive&&current&&inspection){for(let i=0;i<brightness.length;i++){const rgb=current.colorMode!=='uniform'&&originalColors?originalColors.subarray(i*3,i*3+3):[tint.r,tint.g,tint.b];for(let c=0;c<3;c++)colors[i*3+c]=rgb[c]*brightness[i];}}else if(!transitionActive&&current)sampleColors(current.points.positions,motionFor(current),currentProgress,[tint.r,tint.g,tint.b],brightness,colors,bounds,current.colorMode!=='uniform'?originalColors:null);if(geometry.attributes.color)geometry.attributes.color.needsUpdate=true;controls.update();updateMarkerVisibility();if(transitionActive){marker.visible=false;observerBadge.hidden=true;}const visible=marker.visible,refVisible=reference?.visible;if(clean){marker.visible=false;if(reference)reference.visible=false;}try{renderer.render(scene,camera);}finally{marker.visible=visible;if(reference)reference.visible=refVisible;}}
+  render(clean=false){if(!transitionActive&&current&&inspection){for(let i=0;i<brightness.length;i++){const rgb=current.colorMode!=='uniform'&&originalColors?originalColors.subarray(i*3,i*3+3):[tint.r,tint.g,tint.b];for(let c=0;c<3;c++)colors[i*3+c]=rgb[c]*brightness[i];}}else if(!transitionActive&&current)sampleColors(current.points.positions,motionFor(current),currentProgress,[tint.r,tint.g,tint.b],brightness,colors,bounds,current.colorMode!=='uniform'?originalColors:null);if(geometry.attributes.color)geometry.attributes.color.needsUpdate=true;controls.update();updateMarkerVisibility();if(transitionActive){marker.visible=false;observerBadge.hidden=true;}const visible=marker.visible,refVisible=reference?.visible;if(clean){marker.visible=false;if(reference)reference.visible=false;}try{renderer.render(scene,camera);}finally{marker.visible=visible;if(reference)reference.visible=refVisible;}}
  };
 }

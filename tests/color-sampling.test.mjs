@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {sourceColors} from '../geometry/strokes.mjs';
+const linear=v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4;
+test('edge sample prefers opaque stroke interior without borrowing adjacent white stroke',()=>{const r={width:5,height:1,data:new Uint8ClampedArray([0,0,0,255,100,20,40,255,250,50,100,255,255,255,255,255,0,0,0,0])},c=sourceColors(r,new Float32Array([.3,.5]),{mode:'light',threshold:10});assert.ok(Math.abs(c[0]-linear(250/255))<1e-6);assert.ok(Math.abs(c[1]-linear(50/255))<1e-6);});
+test('dark strokes retain original color on light paper',()=>{const r={width:3,height:1,data:new Uint8ClampedArray([255,255,255,255,120,30,30,255,210,130,130,255])},c=sourceColors(r,new Float32Array([.85,.5]),{mode:'dark',threshold:200});assert.ok(Math.abs(c[0]-linear(120/255))<1e-6);assert.ok(c[1]<.02);});

@@ -36,7 +36,6 @@ export function validateProject(p){
   check(Array.isArray(f.points.ids)&&f.points.ids.length===f.points.positions.length/3&&f.points.ids.every(x=>typeof x==='string')&&new Set(f.points.ids).size===f.points.ids.length,'逻辑点 ID');
   if(f.points.lockedIds!==undefined)check(Array.isArray(f.points.lockedIds)&&new Set(f.points.lockedIds).size===f.points.lockedIds.length&&f.points.lockedIds.every(x=>f.points.ids.includes(x)),'锁点引用');
   if(f.points.strokeIds!==undefined)check(f.points.strokeIds instanceof Float32Array&&f.points.strokeIds.length===f.points.ids.length&&Array.from(f.points.strokeIds).every(v=>Number.isInteger(v)&&v>=0),'笔画分组');
-  if(f.manualEdited!==undefined)check(typeof f.manualEdited==='boolean','手动编辑状态');
   if(f.points.uv!==undefined)check(f.points.uv instanceof Float32Array&&f.points.uv.length===f.points.ids.length*2&&finiteArray(f.points.uv),'点 UV');
   if(f.generation?.sizeM!==undefined)check(Number.isFinite(f.generation.sizeM)&&f.generation.sizeM>=.1&&f.generation.sizeM<=1000,'物理尺寸');
   if(f.generation?.minDistance!==undefined)check(Number.isFinite(f.generation.minDistance)&&f.generation.minDistance>=0&&f.generation.minDistance<=1000,'最小间距');
