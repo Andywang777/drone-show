@@ -66,3 +66,4 @@ macOS 也可以直接双击 `启动点阵飞行.command`，它会启动服务并
 - `formation.mjs` / `lineart.mjs`：保留的采样算法。
 
 `npm test` 运行算法和工程契约测试。`node tests/create-sample.mjs` 可重建 GLB 样例。第一阶段验证记录见 `docs/STAGE1_VERIFICATION.md`。
+<!-- rebuild -->
